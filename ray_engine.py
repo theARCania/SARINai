@@ -8,9 +8,25 @@ def refract_vectors(incident, normals, n1, n2):
     normals = normals / (np.linalg.norm(normals, axis=1, keepdims=True) + 1e-8)
     c = -np.sum(incident * normals, axis=1, keepdims=True)
     discriminant = 1.0 - r**2 * (1.0 - c**2)
+    refracted = np.zeros_like(incident)
     discriminant = np.maximum(discriminant, 0)
-    refracted = r * incident + (r * c - np.sqrt(discriminant)) * normals
-    return refracted
+    valid_mask = (discriminant >= 0).flatten()
+
+    if np.any(valid_mask):
+        r_valid = r
+        c_valid = c[valid_mask]
+        n_valid = normals[valid_mask]
+        i_valid = incident[valid_mask]
+        d_valid = discriminant[valid_mask]
+        refracted[valid_mask] = r_valid * i_valid + (r_valid * c_valid - np.sqrt(d_valid)) * n_valid
+    return refracted, valid_mask
+
+def reflect_vectors(incident, normals):
+    incident = incident / (np.linalg.norm(incident, axis=1, keepdims=True) + 1e-8)
+    normals = normals / (np.linalg.norm(normals, axis=1, keepdims=True) + 1e-8)
+    dot_prod = np.sum(incident * normals, axis=1, keepdims=True)
+    reflected = incident - 2 * dot_prod * normals
+    return reflected
 
 
 def create_ray_grid(mesh, resolution=50):
@@ -36,15 +52,42 @@ def fire_rays(mesh, ray_origins, ray_directions):
     )
     normals_1 = mesh.face_normals[index_tri_1]
     valid_directions = ray_directions[index_ray_1]
-    directions_inside = refract_vectors(ray_directions[index_ray_1], normals_1, 1.0, 2.42)
-
+    directions_inside, _ = refract_vectors(valid_directions, normals_1, 1.0, 2.42)
     origins_2 = locations_1 + directions_inside * 0.001
     locations_2, index_ray_2, index_tri_2 = mesh.ray.intersects_location(
         ray_origins=origins_2,
         ray_directions=directions_inside
     )
 
+
     return locations_1, locations_2
+
+
+def calculate_brilliance(mesh):
+    origins, directions = create_ray_grid(mesh, resolution=40)
+    locs_1, idx_1, tri_1 = mesh.ray.intersects_location(origins, directions)
+    if lens(locs_1) == 0: return 0.0
+    normals_1 = mesh.face_normals[tri_1]
+    dirs_1 = directions[idx_1]
+    dirs_inside, _ = refract_vectors(dirs_1, normals_1, 1.0, 2.42)
+    origins_2 = locs_1 + (dirs_inside * 0.001)
+    locs_2, idx_2, tri_2 = mesh.ray.intersects_location(origins_2, dirs_inside)
+    normals_2 = mesh.face_normals[tri_2]
+
+
+    dirs_2 = dirs_inside[idx_2]
+    dirs_exit, valid_refraction = refract_vectors(dirs_2, normals_2, 2.42, 1.0)
+
+
+    hit_z = locs_2[:, 2] 
+    bottom_hits = hit_z < 0
+    tir_mask = ~valid_refraction
+    sparkle_rays = np.logical_and(bottom_hits, tir_mask)
+    
+    score = np.sum(sparkle_rays) / len(locs_1)
+
+    return score
+
 
 if __name__ == "__main__":
     stone = load_and_clean_mesh()
