@@ -66,7 +66,7 @@ def fire_rays(mesh, ray_origins, ray_directions):
 def calculate_brilliance(mesh):
     origins, directions = create_ray_grid(mesh, resolution=40)
     locs_1, idx_1, tri_1 = mesh.ray.intersects_location(origins, directions)
-    if lens(locs_1) == 0: return 0.0
+    if len(locs_1) == 0: return 0.0
     normals_1 = mesh.face_normals[tri_1]
     dirs_1 = directions[idx_1]
     dirs_inside, _ = refract_vectors(dirs_1, normals_1, 1.0, 2.42)
